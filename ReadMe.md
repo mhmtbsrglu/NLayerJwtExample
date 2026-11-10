@@ -1,3 +1,5 @@
+![ss.png](assets/ss.png)
+
 # NLayerJwtExample
 
 A secure JWT-based authentication and authorization implementation built with ASP.NET Core.
