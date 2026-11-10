@@ -95,6 +95,17 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+const string FrontendPolicy = "FrontendPolicy";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(FrontendPolicy, policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials(); // refresh cookie için zorunlu
+    });
+});
 // API services
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
@@ -133,7 +144,7 @@ app.UseExceptionHandler();
 
 app.UseAuthentication();
 app.UseAuthorization();
-
+app.UseCors(FrontendPolicy);
 // Account endpoints
 var accounts = app.MapGroup("/accounts")
     .WithTags("Accounts");

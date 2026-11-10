@@ -5,6 +5,7 @@ import "@astryxdesign/core/reset.css";
 import "@astryxdesign/core/astryx.css";
 import { AppShell, Theme } from "@astryxdesign/core";
 import { defaultThemeSlug, themes } from "@/astryx-themes";
+import StoreProvider from "@/lib/redux/react/store-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,11 +31,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body className="h-full flex flex-col">
   <div className="h-full flex flex-col flex-1">
-    <Theme theme={themes[defaultThemeSlug]} mode="dark">
+    <StoreProvider>
+      <Theme theme={themes[defaultThemeSlug]} mode="dark">
       <AppShell height="fill" variant="surface" contentPadding={0}>
         {children}
       </AppShell>
     </Theme>
+    </StoreProvider>
   </div>
 </body>
     </html>
