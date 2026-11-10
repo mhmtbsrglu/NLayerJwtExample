@@ -31,6 +31,9 @@ if (tokenOptions.AccessTokenExpiration <= 0)
 if (string.IsNullOrWhiteSpace(tokenOptions.PublicKeyPath))
     throw new InvalidOperationException("RSA public key path is not configured.");
 
+if (string.IsNullOrWhiteSpace(tokenOptions.PrivateKeyPath))
+    throw new InvalidOperationException("RSA private key path is not configured.");
+
 // Resolve public key path relative to the application content root
 var publicKeyPath = Path.GetFullPath(
     Path.Combine(builder.Environment.ContentRootPath, tokenOptions.PublicKeyPath)
@@ -41,6 +44,21 @@ if (!File.Exists(publicKeyPath))
         "RSA public key was not found.",
         publicKeyPath
     );
+
+// Resolve the private key path against the content root too, so signing works
+// regardless of the process working directory. JwtHelper reads this value from
+// configuration, so persist the absolute path.
+var privateKeyPath = Path.GetFullPath(
+    Path.Combine(builder.Environment.ContentRootPath, tokenOptions.PrivateKeyPath)
+);
+
+if (!File.Exists(privateKeyPath))
+    throw new FileNotFoundException(
+        "RSA private key was not found.",
+        privateKeyPath
+    );
+
+builder.Configuration["TokenOptions:PrivateKeyPath"] = privateKeyPath;
 
 // Load RSA public key
 var rsa = RSA.Create();
@@ -166,10 +184,11 @@ accounts.MapPost("/register", async (
     IAccountService service) =>
 {
     var account = await service.RegisterAsync(dto);
+    var response = AccountResponse.FromAccount(account);
 
     return Results.Created(
-        $"/accounts/{account.Id}",
-        account
+        $"/accounts/{response.Id}",
+        response
     );
 })
 .WithName("RegisterAccount");
@@ -179,8 +198,9 @@ accounts.MapGet("/", async (IAccountService service) =>
 {
     var list = await service.ListActiveAsync();
 
-    return Results.Ok(list);
+    return Results.Ok(list.Select(AccountResponse.FromAccount));
 })
+.RequireAuthorization()
 .WithName("ListAccounts");
 
 // GET /accounts/{id}
@@ -192,8 +212,9 @@ accounts.MapGet("/{id:guid}", async (
 
     return account is null
         ? Results.NotFound()
-        : Results.Ok(account);
+        : Results.Ok(AccountResponse.FromAccount(account));
 })
+.RequireAuthorization()
 .WithName("GetAccountById");
 
 // PUT /accounts/{id}/email
@@ -206,6 +227,7 @@ accounts.MapPut("/{id:guid}/email", async (
 
     return Results.NoContent();
 })
+.RequireAuthorization()
 .WithName("ChangeAccountEmail");
 
 // DELETE /accounts/{id}
@@ -217,6 +239,7 @@ accounts.MapDelete("/{id:guid}", async (
 
     return Results.NoContent();
 })
+.RequireAuthorization()
 .WithName("DeactivateAccount");
 
 app.Run();

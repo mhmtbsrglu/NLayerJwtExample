@@ -1,175 +1,153 @@
-![ss.png](assets/ss.png)
+<div align="center">
 
 # NLayerJwtExample
 
-A secure JWT-based authentication and authorization implementation built with ASP.NET Core.
+**Stateless JWT auth with RS256: a layered .NET 10 API and a Next.js 16 client.**
 
-This project demonstrates how to implement stateless authentication using **JSON Web Tokens (JWT)** and asymmetric cryptography with **RS256 (RSA + SHA-256)**.
+![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white&style=flat-square)
+![JWT](https://img.shields.io/badge/JWT-RS256-000000?logo=jsonwebtokens&logoColor=white&style=flat-square)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white&style=flat-square)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black&style=flat-square)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white&style=flat-square)
+![Redux Toolkit](https://img.shields.io/badge/Redux_Toolkit-2-764ABC?logo=redux&logoColor=white&style=flat-square)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white&style=flat-square)
+![pnpm](https://img.shields.io/badge/pnpm-12-F69220?logo=pnpm&logoColor=white&style=flat-square)
 
-It uses an RSA key pair to separate token signing from token verification. The private key is responsible for signing access tokens, while the public key is used to validate their signatures.
+<img src="assets/ss.png" alt="Login screen" width="760">
 
-The project also includes password hashing, credential verification, configurable token expiration, and JWT Bearer authentication.
+</div>
 
-## Technologies
+## Overview
 
-- C#
-- ASP.NET Core Web API
-- JSON Web Token (JWT)
-- RS256 (RSA + SHA-256)
-- RSA 3072-bit
-- PBKDF2-SHA256
-- HMAC-SHA256
-- OpenSSL
-- Dependency Injection
+Most JWT tutorials stop at one `Program.cs` that signs a token and checks it. This repo takes the same flow and puts it behind a normal layered structure: domain models and abstractions in `CoreLayer`, use cases in `BusinessLogicLayer`, storage in `DataAccessLayer`, and HTTP in `PresentationLayer`. Swapping the in-memory repository for EF Core would only touch one layer.
 
-## Authentication Flow
+Access tokens are signed with a 3072-bit RSA key and verified with the public half of the pair, so a service that only validates tokens never needs the private key. Passwords go through PBKDF2-SHA256 with a random salt per password and a pepper that stays out of the database.
 
-### Registration
+The client is a Next.js 16 app with login and registration. It keeps the access token in Redux and retries a request once after a `401`.
 
-When a user creates an account:
+## Architecture
 
-1. The API receives the registration request.
-2. The email address is normalized.
-3. The password is securely hashed using PBKDF2-SHA256.
-4. The resulting password hash is stored.
-5. The account is created.
-
-Plain-text passwords are never stored.
-
-### Login
-
-When a user attempts to authenticate:
-
-1. The API receives the login credentials.
-2. The account is retrieved using the provided email address.
-3. The submitted password is verified against the stored password hash.
-4. Invalid credentials result in an authentication failure.
-5. If verification succeeds, an access token is generated.
-6. The access token is returned to the client.
-
-### Access Token Validation
-
-For authenticated requests:
-
-1. The client sends the access token in the `Authorization` header.
-2. ASP.NET Core JWT Bearer middleware extracts the token.
-3. The token signature is verified using the RSA public key.
-4. Issuer, audience, expiration, and signing algorithm are validated.
-5. If validation succeeds, the authenticated user principal is created.
-6. Authorization rules determine whether access to the requested resource is permitted.
-
-Example:
-
-```http
-Authorization: Bearer YOUR_ACCESS_TOKEN
+```text
+┌──────────────────┐   Bearer JWT   ┌──────────────────────────────┐
+│  Next.js client  │ ─────────────▶ │  PresentationLayer           │
+│  Redux + Axios   │ ◀───────────── │  Minimal API · JWT bearer    │
+└──────────────────┘                └──────────────┬───────────────┘
+                                                   │
+                                    ┌──────────────▼───────────────┐
+                                    │  BusinessLogicLayer          │
+                                    │  AccountManager · DTOs       │
+                                    └──────────────┬───────────────┘
+                                                   │
+                                    ┌──────────────▼───────────────┐
+                                    │  CoreLayer                   │
+                                    │  Entities · abstractions     │
+                                    │  JWT · password hashing      │
+                                    └──────────────▲───────────────┘
+                                                   │
+                                    ┌──────────────┴───────────────┐
+                                    │  DataAccessLayer             │
+                                    │  In-memory repository        │
+                                    └──────────────────────────────┘
 ```
 
-## JWT Security – RS256
+| Layer | Responsibility | References |
+|---|---|---|
+| `CoreLayer` | Entities, abstractions, JWT helper, password hashing, options | — |
+| `BusinessLogicLayer` | `AccountManager` use cases, DTOs, domain exceptions | `CoreLayer` |
+| `DataAccessLayer` | Generic in-memory repository and `AccountRepository` | `CoreLayer` |
+| `PresentationLayer` | Minimal API, DI, JWT bearer, CORS, error handling | `BusinessLogicLayer`, `DataAccessLayer` |
+| `frontend` | Next.js UI, auth state, API client, theming | — |
 
-This project uses RS256, an asymmetric digital signature algorithm based on RSA and SHA-256.
+Dependencies point toward `CoreLayer`, which has no idea ASP.NET Core exists. Only `PresentationLayer` is executable, and the solution uses the newer `.slnx` format.
 
-Unlike HS256, which relies on a shared secret for both signing and verification, RS256 uses two mathematically related keys:
+## Stack
 
-- **Private Key:** Signs access tokens.
-- **Public Key:** Verifies access token signatures.
+### Backend packages
 
-### Why RS256?
+| Package | Version | Project | Purpose |
+|---|---|---|---|
+| `Microsoft.AspNetCore.Authentication.JwtBearer` | 10.0.14 | `CoreLayer` | JWT bearer authentication and token validation |
+| `Microsoft.AspNetCore.OpenApi` | 10.0.13 | `PresentationLayer` | OpenAPI document generation |
+| `System.IdentityModel.Tokens.Jwt` | transitive | `CoreLayer` | Creating and writing JWTs |
+| `Microsoft.IdentityModel.Tokens` | transitive | `CoreLayer` | Signing keys and validation parameters |
 
-RS256 provides several security advantages:
+Two packages are referenced directly. The JWT types used in code (`JwtSecurityToken`, `RsaSecurityKey`, and similar) come in through `JwtBearer`. There is no database provider.
 
-- Signing and verification responsibilities are separated.
-- Services can verify tokens without having access to the private signing key.
-- The private key can remain isolated from resource servers.
-- It is suitable for distributed applications and service-to-service authentication.
+### Frontend packages
 
-### Private Key
+| Package | Version | Purpose |
+|---|---|---|
+| `next` | 16.4.5 | App Router and build tooling |
+| `react` / `react-dom` | 19.3.0 | UI runtime |
+| `@reduxjs/toolkit` | ^2.14.0 | Store and auth slice |
+| `react-redux` | ^9.3.1 | React bindings for Redux |
+| `axios` | ^1.21.0 | HTTP client with interceptors |
+| `@astryxdesign/core` | ^0.7.11 | Component library and layout primitives |
+| `@astryxdesign/theme-neutral` | ^0.7.11 | Neutral theme and fonts |
+| `@astryxdesign/cli` | ^0.7.11 | Scaffolding and component CLI |
+| `@stylexjs/stylex` | ^0.19.1 | Styling runtime required by Astryx |
+| `@tabler/icons-react` | ^3.51.0 | Icons |
 
-The private key is used to generate JWT signatures.
+### Tooling
 
-It must remain confidential and should never be distributed to clients or committed to version control.
+| Package | Version | Purpose |
+|---|---|---|
+| `typescript` | ^5 | Type checking |
+| `tailwindcss` | ^4 | Utility classes |
+| `@tailwindcss/turbopack` | ^4 | Tailwind loader for Turbopack |
+| `eslint` | ^9 | Linting |
+| `eslint-config-next` | 16.4.5 | Next.js and TypeScript rules |
+| `@types/node`, `@types/react`, `@types/react-dom` | ^20 / ^19 | Type definitions |
 
-### Public Key
+The client uses pnpm 12.
 
-The public key is used to verify JWT signatures.
+## Getting started
 
-It can be distributed to services that need to validate tokens without exposing the private signing key.
+You'll need the [.NET 10 SDK](https://dotnet.microsoft.com/), [OpenSSL](https://www.openssl.org/), Node.js 20 or newer, and pnpm 12.
 
-### Important: JWT Is Not Encrypted
-
-JWT signatures provide integrity and authenticity, not confidentiality.
-
-The token payload can be decoded by anyone who obtains the token. Never include passwords, private keys, or other sensitive information in JWT claims.
-
-## RSA Key Generation
-
-OpenSSL is used to generate the RSA key pair.
-
-### Requirements
-
-Install OpenSSL and make sure the `openssl` command is available in your terminal.
-
-Verify the installation:
+**1. Clone the repository**
 
 ```bash
-openssl version
+git clone <repository-url>
+cd NLayerJwtExample
 ```
 
-### 1. Generate the Private Key
-
-Generate a 3072-bit RSA private key:
+**2. Generate the RSA key pair**
 
 ```bash
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out private.pem
+mkdir -p PresentationLayer/Keys
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out PresentationLayer/Keys/private.pem
+openssl pkey -pubout -in PresentationLayer/Keys/private.pem -out PresentationLayer/Keys/public.pem
 ```
 
-### 2. Generate the Public Key
+On PowerShell, create the directory with `New-Item -ItemType Directory -Force PresentationLayer\Keys` and pass the same arguments to `openssl`.
 
-Derive the public key from the private key:
+**3. Start the API**
 
 ```bash
-openssl pkey -pubout -in private.pem -out public.pem
+dotnet restore
+dotnet run --project PresentationLayer
 ```
 
-The generated files are:
-
-- `private.pem`
-- `public.pem`
-
-### 3. Verify the Keys
-
-Inspect the private key:
+**4. Start the web client**
 
 ```bash
-openssl pkey -in private.pem -text -noout
+cd frontend
+pnpm install
+pnpm dev
 ```
 
-Inspect the public key:
-
-```bash
-openssl pkey -pubin -in public.pem -text -noout
-```
-
-Verify that both keys belong to the same key pair:
-
-```bash
-openssl pkey -in private.pem -pubout -outform PEM | openssl sha256
-
-openssl pkey -pubin -in public.pem -pubout -outform PEM | openssl sha256
-```
-
-Both SHA-256 fingerprints should match.
+The API listens on `http://localhost:5263` (the HTTPS profile uses `https://localhost:7187`). The client runs on `http://localhost:3000`.
 
 ## Configuration
 
-JWT settings are defined in `appsettings.json`.
-
-Example:
+JWT settings live in `PresentationLayer/appsettings.json`:
 
 ```json
 {
   "TokenOptions": {
-    "Issuer": "https://localhost:7001",
-    "Audience": "https://localhost:7001",
+    "Issuer": "https://localhost:5263",
+    "Audience": "https://localhost:5263",
     "AccessTokenExpiration": 15,
     "PrivateKeyPath": "Keys/private.pem",
     "PublicKeyPath": "Keys/public.pem"
@@ -177,220 +155,173 @@ Example:
 }
 ```
 
-| Property | Description |
+| Key | Meaning |
 |---|---|
-| `Issuer` | Identifies the token issuer. |
-| `Audience` | Identifies the intended token recipient. |
-| `AccessTokenExpiration` | Access token lifetime in minutes. |
-| `PrivateKeyPath` | Location of the RSA private key. |
-| `PublicKeyPath` | Location of the RSA public key. |
+| `Issuer` | `iss` claim and expected token issuer |
+| `Audience` | `aud` claim and expected recipient |
+| `AccessTokenExpiration` | Token lifetime in minutes |
+| `PrivateKeyPath` | RSA private key used for signing |
+| `PublicKeyPath` | RSA public key used for validation |
 
-The issuer and audience values must match between token generation and token validation.
+Both paths are resolved from the content root, so `dotnet run --project PresentationLayer` works from the repo root. Missing keys or incomplete options stop the app at startup instead of failing on the first login.
 
-Key paths must resolve correctly from the application's configured content root.
+Two things are not in `appsettings.json`: the CORS origin (`http://localhost:3000`, with credentials) sits in `Program.cs`, and the API URL is set in `frontend/src/lib/axios/index.ts`.
 
-## Token Claims
+## How authentication works
 
-The JWT contains claims that identify the authenticated account and provide additional authorization information.
+**Registration.** The email is trimmed and checked against active accounts; a duplicate returns `409`. The password is hashed, an `Account` with the `User` role is created, and the response is `201` with a sanitized account object.
 
-The token generation process includes:
+**Login.** The account is found by email, ignoring case. If it doesn't exist, the API still runs a dummy derivation with the same cost, so response time doesn't reveal which emails are registered. A wrong password and a deactivated account both get `401`. A successful login returns an RS256 token with a `jti` and the account id.
 
-| Claim | Description |
-|---|---|
-| `jti` | Unique identifier for the token. |
-| `NameIdentifier` | Identifies the authenticated account. |
-| `Role` | Represents the account's authorization roles. |
+**Protected requests.** The client sends `Authorization: Bearer <token>`. Middleware checks the signature with the public key, then the issuer, audience, lifetime, and algorithm. `RSA-SHA256` is the only accepted algorithm, and clock skew is capped at 30 seconds. Claims aren't read until all of that passes.
 
-Role claims can be used by ASP.NET Core authorization mechanisms to restrict access to protected endpoints.
+Role claims come from operation claims, but nothing populates them yet, so tokens currently carry none.
 
-## Authentication Configuration
+## Password storage
 
-JWT Bearer authentication validates incoming access tokens using the RSA public key.
+A hash looks like `2$600000$1$<salt>$<hash>`: format version, iteration count, pepper version, salt, and hash. PBKDF2-SHA256 runs 600,000 iterations over the normalized password and a fresh 16-byte salt, then HMAC-SHA256 signs the result with a 32-byte pepper. Comparison is constant-time.
 
-The validation configuration includes:
+A few details that are easy to skip:
 
-```csharp
-options.TokenValidationParameters = new TokenValidationParameters
-{
-    ValidateIssuer = true,
-    ValidIssuer = tokenOptions.Issuer,
+- Old v1 hashes that predate the pepper still verify, and `NeedsRehash` tells you when to upgrade one.
+- The iteration count comes from the hash, so it's capped at 2,000,000 to keep a tampered record from burning CPU.
+- Bad or malformed input still triggers a dummy derivation, which keeps timing close to a real check.
+- Buffers for the password, salt, derived key, and pepper are zeroed after use.
+- Passwords are limited to 1024 UTF-8 bytes and normalized to Unicode FormC.
 
-    ValidateAudience = true,
-    ValidAudience = tokenOptions.Audience,
+## API reference
 
-    ValidateLifetime = true,
-    RequireExpirationTime = true,
-
-    ValidateIssuerSigningKey = true,
-    IssuerSigningKey = publicKey,
-
-    ValidAlgorithms = [SecurityAlgorithms.RsaSha256],
-
-    ClockSkew = TimeSpan.FromSeconds(30)
-};
-```
-
-The application middleware must include:
-
-```csharp
-app.UseAuthentication();
-app.UseAuthorization();
-```
-
-Authentication must run before authorization.
-
-Protected endpoints can require authentication using:
-
-```csharp
-.RequireAuthorization();
-```
-
-Public endpoints such as registration and login can use:
-
-```csharp
-.AllowAnonymous();
-```
-
-## Password Security
-
-Password storage is handled separately from JWT signing.
-
-The password hashing implementation uses:
-
-- PBKDF2 with SHA-256.
-- 600,000 iterations.
-- A unique salt for each password.
-- An additional pepper.
-- HMAC-SHA256 for additional hash protection.
-
-The implementation also supports password verification, dummy verification, and rehash checks.
-
-Password hashing is intentionally computationally expensive to increase the cost of offline password-guessing attacks.
-
-## Security Considerations
-
-### Private Key Protection
-
-- Never commit `private.pem` to version control.
-- Never expose private keys through API responses.
-- Never include private keys in frontend applications.
-- Use a secure secret-management solution in production.
-- Restrict filesystem permissions for private key files.
-- Rotate the key pair if the private key is compromised.
-
-### Token Security
-
-- Use HTTPS for all authentication requests.
-- Keep access token lifetimes limited.
-- Validate issuer and audience.
-- Validate token expiration.
-- Restrict accepted signing algorithms.
-- Never trust claims before signature validation.
-- Avoid storing sensitive information inside JWT payloads.
-
-### Git Ignore
-
-Add the following entries to the root `.gitignore`:
-
-```gitignore
-# RSA private keys
-Keys/private.pem
-Keys/*.key
-
-# Environment files
-.env
-.env.*
-!.env.example
-
-# .NET build outputs
-[Bb]in/
-[Oo]bj/
-
-# IDE
-.idea/
-.vs/
-*.user
-*.suo
-```
-
-The public key can be committed to version control if needed. The private key must never be committed.
-
-If a private key has already been pushed to a remote repository, removing it from Git tracking is not sufficient. Generate a new key pair and replace the compromised key.
-
-## API Endpoints
-
-The following endpoints represent the account authentication operations:
-
-| Method | Endpoint | Description | Access |
+| Method | Endpoint | Access | Result |
 |---|---|---|---|
-| POST | `/accounts/register` | Creates a new account. | Anonymous |
-| POST | `/accounts/login` | Authenticates an account and returns an access token. | Anonymous |
+| `POST` | `/accounts/register` | Anonymous | `201` with `AccountResponse` |
+| `POST` | `/accounts/login` | Anonymous | `200` with access token |
+| `GET` | `/accounts` | Bearer token | Active accounts |
+| `GET` | `/accounts/{id:guid}` | Bearer token | One active account or `404` |
+| `PUT` | `/accounts/{id:guid}/email` | Bearer token | `204`, or `409` if taken |
+| `DELETE` | `/accounts/{id:guid}` | Bearer token | `204`, soft delete |
+| `GET` | `/dev/generate-pepper` | Development only | Random 32-byte pepper |
+| `GET` | `/openapi/v1.json` | Development only | OpenAPI document |
 
-### Login Request
+**Register and log in**
+
+```http
+POST /accounts/register
+Content-Type: application/json
+
+{ "email": "user@example.com", "password": "YourPassword" }
+```
+
+```http
+POST /accounts/login
+Content-Type: application/json
+
+{ "email": "user@example.com", "password": "YourPassword" }
+```
 
 ```json
 {
-  "email": "user@example.com",
-  "password": "YourPassword"
+  "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expiration": "2026-01-01T12:15:00Z"
 }
 ```
 
-### Authenticated Request
-
-After successfully logging in, include the returned access token in subsequent requests:
+**Call a protected endpoint**
 
 ```http
-GET /profile
+GET /accounts
 Authorization: Bearer YOUR_ACCESS_TOKEN
 ```
 
-Actual endpoint paths depend on the application's route configuration.
+**Change an email**
 
-## Getting Started
+```http
+PUT /accounts/{id}/email
+Authorization: Bearer YOUR_ACCESS_TOKEN
+Content-Type: application/json
 
-### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd NLayerJwtExample
+{ "newEmail": "new@example.com" }
 ```
 
-### 2. Generate RSA Keys
+Accounts are serialized as:
 
-Create the keys directory and generate the key pair:
-
-```bash
-mkdir Keys
-
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out Keys/private.pem
-
-openssl pkey -pubout -in Keys/private.pem -out Keys/public.pem
+```json
+{
+  "id": "3f1b5b1e-8a0c-4d6e-9b1a-2c3d4e5f6a7b",
+  "email": "user@example.com",
+  "role": "User",
+  "createdDate": "2026-01-01T12:00:00Z",
+  "updatedDate": null,
+  "isDeleted": false
+}
 ```
 
-### 3. Configure JWT Settings
+Domain errors come back as `ProblemDetails`: `409` for a duplicate email, `404` for a missing account, `401` for bad credentials, and `400` for bad arguments.
 
-Update the `TokenOptions` section in `PresentationLayer/appsettings.json`.
+## Frontend
 
-Make sure the issuer, audience, and RSA key paths are configured correctly.
+The client has one screen for login and registration (Turkish text) inside an Astryx `AppShell`, using the neutral theme in dark mode. Tabler supplies the icons, and Tailwind handles spacing and small layout tweaks.
 
-### 4. Restore Dependencies
+State is a Redux Toolkit slice holding `accessToken` and a `status` of `idle`, `loading`, `authenticated`, or `unauthenticated`. The store is a singleton in the browser and created per request on the server, so one user's state can't leak into another's render. `useAuth` wraps the actions behind `login`, `register`, and `logout`.
 
-```bash
-dotnet restore
+An Axios instance points at the API, sends cookies (`withCredentials`), and adds the bearer header from the store. On a `401` it tries one refresh call, updates Redux, and replays the original request. Parallel failures wait on the same refresh promise instead of firing several.
+
+| Script | Description |
+|---|---|
+| `pnpm dev` | Development server with Turbopack |
+| `pnpm build` | Production build |
+| `pnpm start` | Serve the production build |
+| `pnpm lint` | ESLint |
+
+## Project layout
+
+```text
+NLayerJwtExample/
+├─ CoreLayer/
+│  ├─ Models/                 Account, OperationClaim, base entity
+│  ├─ DataAccess/Abstracts/   IRepository, IAccountRepository
+│  └─ Utils/Security/
+│     ├─ Hashing/             PasswordHasher
+│     └─ Jwt/                 JwtHelper, TokenOptions, AccessToken
+├─ BusinessLogicLayer/
+│  ├─ Concretes/              AccountManager
+│  ├─ Dtos/                   LoginDto, RegisterDto, AccountResponse
+│  └─ Exceptions/             Domain exceptions
+├─ DataAccessLayer/Concretes/ In-memory repository, AccountRepository
+├─ PresentationLayer/
+│  ├─ Handlers/               DomainExceptionHandler
+│  ├─ Keys/                   RSA key pair (private key ignored by Git)
+│  ├─ Program.cs
+│  └─ appsettings.json
+├─ frontend/
+│  ├─ src/app/                Layout, page, global styles
+│  ├─ src/features/auth/      Auth slice and hook
+│  ├─ src/lib/                Axios client and Redux store
+│  └─ src/astryx-themes.ts
+├─ assets/ss.png
+├─ NLayerJwtExample.slnx
+└─ ReadMe.md
 ```
 
-### 5. Build the Project
+## Security notes
 
-```bash
-dotnet build
-```
+Before deploying this anywhere public, fix these:
 
-### 6. Run the Application
+- **Rotate the RSA key.** The private key was committed before it was added to `.gitignore`. Treat the current pair as compromised. Generate a new one, and if the repo is public, purge the old key from history.
+- **The pepper is hardcoded** in `PasswordHasher`. Read it from a secret store or environment variable. The version field is there so you can rotate it without breaking existing hashes.
+- **Serve the API over HTTPS.** Bearer tokens and passwords are plain text on the wire otherwise.
+- **Shorten token lifetimes** and add refresh tokens before keeping users signed in for long periods.
+- **Rate-limit `/accounts/login` and `/accounts/register`.** PBKDF2 makes each attempt expensive, but that alone won't stop a botnet.
 
-```bash
-dotnet run --project PresentationLayer
-```
+Keys generated from now on are ignored by Git through the `*.pem` and `*.key` rules. If a deployment needs the public key, add it with `git add -f`.
+
+## Known limitations
+
+- No refresh endpoint. The Axios client calls `POST /account/refresh`, but the API doesn't define it.
+- `/dashboard` doesn't exist. A successful login navigates there and lands on a 404.
+- Accounts live in memory, so a restart wipes them. Duplicate emails are caught by a LINQ check, not a unique index.
+- Registration pretends to send a confirmation email. It doesn't.
+- No tests and no CI.
 
 ## License
 
-This project is intended for educational and development purposes. Add your preferred license before distributing or publishing the project.
+There is no license file yet. Treat this as a learning project and add a license before you publish or reuse it.

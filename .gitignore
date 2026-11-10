@@ -1,6 +1,6 @@
-﻿# RSA private keys
-Keys/private.pem
-Keys/*.key
+﻿# RSA keys and certificates — never commit private keys
+*.pem
+*.key
 
 # User secrets / environment files
 .env

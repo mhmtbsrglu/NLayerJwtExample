@@ -33,16 +33,14 @@ export function useAuth() {
   );
 
   const register = useCallback(async (email: string, password: string) => {
-    const res = await instance.post("/accounts/register", { email, password }).catch((x) => console.log(x));
+    const res = await instance.post("/accounts/register", { email, password });
     return res.data;
   }, []);
 
-  const logout = useCallback(async () => {
-    try {
-      await instance.post("/accounts/logout");
-    } finally {
-      dispatch(clearAuth());
-    }
+  // There is no server-side session to invalidate: the access token is stateless,
+  // so clearing local auth state is enough to log out.
+  const logout = useCallback(() => {
+    dispatch(clearAuth());
   }, [dispatch]);
 
   return {

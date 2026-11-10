@@ -15,6 +15,7 @@ public sealed class DomainExceptionHandler : IExceptionHandler
         {
             DuplicateEmailException => (StatusCodes.Status409Conflict, "Conflict"),
             AccountNotFoundException => (StatusCodes.Status404NotFound, "Not Found"),
+            InvalidCredentialsException => (StatusCodes.Status401Unauthorized, "Unauthorized"),
             ArgumentException => (StatusCodes.Status400BadRequest, "Bad Request"),
             _ => (0, string.Empty)
         };
