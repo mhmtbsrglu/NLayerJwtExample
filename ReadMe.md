@@ -8,10 +8,6 @@ It uses an RSA key pair to separate token signing from token verification. The p
 
 The project also includes password hashing, credential verification, configurable token expiration, and JWT Bearer authentication.
 
-## UML Sequence Diagram
-
-![JWT Authentication Flow Sequence Diagram.png](assets/JWT%20Authentication%20Flow%20Sequence%20Diagram.png)
-
 ## Technologies
 
 - C#
